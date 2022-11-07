@@ -1,1 +1,1 @@
-# Parallel_Floyd_Warshall
+# Parallel Floyd Warshall Algorithm (All-pairs shortest path)

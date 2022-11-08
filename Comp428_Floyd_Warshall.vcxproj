@@ -133,9 +133,6 @@
   <ItemGroup>
     <ClCompile Include="Comp428_Floyd_Warshall.cpp" />
   </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="input_matrix.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

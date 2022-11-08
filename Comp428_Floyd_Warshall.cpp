@@ -88,7 +88,9 @@ int main(int argc, char* argv[])
 
     int sqrtP = (int) sqrt(numTasks);
     int subMatrixSize = theGraph.size() / sqrtP;
-    std::cout << "Submatrix size: " << subMatrixSize << std::endl;
+    std::cout << "Submatrix size: " << subMatrixSize << "x" << subMatrixSize << std::endl;
+
+    std::vector<std::vector<int>> subMatrix(subMatrixSize, std::vector<int>(subMatrixSize));
 
     if (taskId == MASTER)
     {
@@ -111,8 +113,16 @@ int main(int argc, char* argv[])
             }
         }
 
-        // TODO: need to extract the submatrix for process 0
-
+        // Extract the submatrix for process 0
+        for (int row = 0; row < subMatrixSize; ++row)
+        {
+            // copy the entire column
+            for (int col = 0; col < subMatrixSize; ++col)
+            {
+                subMatrix[row][col] = theGraph[row][col];
+            }
+        }
+        printVectorContentsWithAssertions(subMatrix, taskId, 0, 0);
     }
     else
     {
@@ -125,8 +135,6 @@ int main(int argc, char* argv[])
 
         // Every processor that is not the master process will wait to receive its chunk of the matrix
         MPI_Status receiveStatus;
-
-        std::vector<std::vector<int>> subMatrix(subMatrixSize, std::vector<int>(subMatrixSize));
 
         for (int i = 0; i < subMatrixSize; ++i)
         {
@@ -141,4 +149,3 @@ int main(int argc, char* argv[])
 
     return 0;
 }
-

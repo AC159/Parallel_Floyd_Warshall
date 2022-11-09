@@ -4,6 +4,7 @@
 #include <math.h>
 #include <cassert>
 #include <algorithm>
+#include <map>
 
 #include <mpi.h>
 
@@ -221,7 +222,6 @@ int main(int argc, char* argv[])
                 subMatrix[row][col] = theGraph[row][col];
             }
         }
-        // printVectorContentsWithAssertions(subMatrix, taskId, 0, 0);
     }
     else
     {
@@ -230,11 +230,8 @@ int main(int argc, char* argv[])
 
         for (int i = 0; i < subMatrixSize; ++i)
         {
-            // std::cout << "Process #" << taskId << " receiving submatrix row #" << i + 1 << std::endl;
             MPI_Recv(&subMatrix[i][0], subMatrixSize, MPI_INT, MASTER, 0, MPI_COMM_WORLD, &receiveStatus);
         }
-
-        // printVectorContentsWithAssertions(subMatrix, taskId, graphStartingRowIndex, graphStartingColumnIndex);
     }
 
     MPI_Barrier(MPI_COMM_WORLD); // Wait for all processes to reach this point
@@ -243,7 +240,6 @@ int main(int argc, char* argv[])
     std::pair<int, int> bottomRighCoordinates(graphEndingRowIndex, graphEndingColumnIndex);
     parallelFloydWarshall(subMatrix, taskId, upperLeftCoordinates, bottomRighCoordinates, startingRowId, startingColumnId, sqrtP);
 
-    // std::cout << "Process #" << taskId << " is terminating!\n";
     MPI_Finalize();
 
     return 0;
@@ -289,6 +285,8 @@ void parallelFloydWarshall(
         std::vector<int> kthRow(n);
         std::vector<int> kthColumn(n);
 
+        int iterationTag = k;
+
         if (k >= upperLeftCoordinates.first && k <= bottomRightCoordinates.first)
         {
             // The current process will broadcast its portion of the kth row to all processes with the same COLUMN id
@@ -303,17 +301,15 @@ void parallelFloydWarshall(
                 if (otherProcessId != taskId)
                 {
                     std::cout << "Process #" << taskId << " sending row to process " << otherProcessId << "\n";
-                    MPI_Send((void*)&kthRow[0], n, MPI_INT, otherProcessId, 0, MPI_COMM_WORLD);
+                    MPI_Send((void*)&kthRow[0], n, MPI_INT, otherProcessId, iterationTag, MPI_COMM_WORLD);
                 }
             }
         }
         else
         {
-            // std::cout << "Process #" << taskId << " receiving row\n";
-
             // Otherwise, the current process will wait to receive the needed row from another process
             MPI_Status receiveStatus;
-            MPI_Recv((void*) &kthRow[0], n, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &receiveStatus);
+            MPI_Recv((void*) &kthRow[0], n, MPI_INT, MPI_ANY_SOURCE, iterationTag, MPI_COMM_WORLD, &receiveStatus);
 
             std::cout << "Process #" << taskId << " received row from process #" << receiveStatus.MPI_SOURCE << "\n";
         }
@@ -336,17 +332,15 @@ void parallelFloydWarshall(
                 if (otherProcessId != taskId)
                 {
                     std::cout << "Process #" << taskId << " sending column to process " << otherProcessId << "\n";
-                    MPI_Send((void*) &kthColumn[0], n, MPI_INT, otherProcessId, 0, MPI_COMM_WORLD);
+                    MPI_Send((void*) &kthColumn[0], n, MPI_INT, otherProcessId, iterationTag, MPI_COMM_WORLD);
                 }
             }
         }
         else
         {
-            // std::cout << "Process #" << taskId << " receiving column\n";
-
             // Otherwise, the current process will wait to receive the needed column from another process
             MPI_Status receiveStatus;
-            MPI_Recv((void*) &kthColumn[0], n, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &receiveStatus);
+            MPI_Recv((void*) &kthColumn[0], n, MPI_INT, MPI_ANY_SOURCE, iterationTag, MPI_COMM_WORLD, &receiveStatus);
 
             std::cout << "Process #" << taskId << " received column from process #" << receiveStatus.MPI_SOURCE << "\n";
         }
@@ -370,6 +364,5 @@ void parallelFloydWarshall(
     }
 
     printVectorContentsWithAssertions( graph, answer, taskId, upperLeftCoordinates.first, upperLeftCoordinates.second );
-    // if (taskId == MASTER) printVectorContents(graph, taskId);
 }
 

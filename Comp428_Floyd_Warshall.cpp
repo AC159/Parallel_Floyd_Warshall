@@ -185,6 +185,12 @@ int main(int argc, char* argv[])
     int graphEndingRowIndex = (startingRowId + 1) * (theGraph.size() / sqrtP) - 1;
     int graphEndingColumnIndex = (startingColumnId + 1) * (theGraph.size() / sqrtP) - 1;
 
+    std::cout << "Process #" << taskId << " start coordinates: (" << graphStartingRowIndex << ", " << graphStartingColumnIndex << ") end coordinates: (" << graphEndingRowIndex
+        << ", " << graphEndingColumnIndex << ")\n";
+
+    assert( (graphEndingRowIndex - graphStartingRowIndex + 1) % subMatrixSize == 0 );
+    assert( (graphEndingColumnIndex - graphStartingColumnIndex + 1) % subMatrixSize == 0 );
+
     if (taskId == MASTER)
     {
         std::cout << "Submatrix size: " << subMatrixSize << "x" << subMatrixSize << std::endl;
@@ -198,8 +204,6 @@ int main(int argc, char* argv[])
 
             int startingRowIndex = startingRowId * (theGraph.size() / sqrtP);
             int startingColumnIndex = startingColumnId * (theGraph.size() / sqrtP);
-
-            std::cout << "Process #" << otherProcessId << " start row idx: " << startingRowIndex << " start column idx: " << startingColumnIndex << "\n";
 
             // Send the submatrix by chunks to the other processor
             for (int i = 0; i < subMatrixSize; ++i)
@@ -267,11 +271,14 @@ void parallelFloydWarshall(
 )
 {
     int n = graph.size();
+
     std::vector<std::vector<int>> previousDkMatrix = graph; // Matrix that will store the costs of the matrix Dk-1
 
     for (int k = 0; k < theGraph.size(); ++k)
     {
         if (taskId == MASTER) std::cout << "Iteration #" << k << std::endl;
+
+        MPI_Barrier(MPI_COMM_WORLD); // Wait for all processes to reach this point
 
         // k is the current vertex for which we are trying to find the shortest path to all other vertices
 
@@ -285,16 +292,19 @@ void parallelFloydWarshall(
         if (k >= upperLeftCoordinates.first && k <= bottomRightCoordinates.first)
         {
             // The current process will broadcast its portion of the kth row to all processes with the same COLUMN id
-            int rowIdx = k % (n / sqrtP);
+            int rowIdx = k % n; 
 
             // Fill the vector with the contents of the row to send
             kthRow = previousDkMatrix[rowIdx];
 
             for ( int i = 0, otherProcessId = taskId % sqrtP; i < sqrtP; ++i, otherProcessId += sqrtP )
             {
-                std::cout << "Process #" << taskId << " sending row to process " << otherProcessId << "\n";
                 // Send the row to all other processes with the same rowId except yourself
-                if ( otherProcessId != taskId ) MPI_Send((void*) &kthRow[0], n, MPI_INT, otherProcessId, 0, MPI_COMM_WORLD);
+                if (otherProcessId != taskId)
+                {
+                    std::cout << "Process #" << taskId << " sending row to process " << otherProcessId << "\n";
+                    MPI_Send((void*)&kthRow[0], n, MPI_INT, otherProcessId, 0, MPI_COMM_WORLD);
+                }
             }
         }
         else
@@ -304,13 +314,18 @@ void parallelFloydWarshall(
             // Otherwise, the current process will wait to receive the needed row from another process
             MPI_Status receiveStatus;
             MPI_Recv((void*) &kthRow[0], n, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &receiveStatus);
+
+            std::cout << "Process #" << taskId << " received row from process #" << receiveStatus.MPI_SOURCE << "\n";
         }
 
-        if ( k >= upperLeftCoordinates.second && k <= bottomRightCoordinates.second)
+        MPI_Barrier(MPI_COMM_WORLD); // Wait for all processes to reach this point
+
+        if ( k >= upperLeftCoordinates.second && k <= bottomRightCoordinates.second )
         {
             // The current process will broadcast its portion of the kth column to all processes with the same ROW id
-            int colIdx = k % (n / sqrtP);
+            int colIdx = k % n;
 
+            // Fill the vector with the contents of the column to send
             for (int i = 0; i < n; ++i)
             {
                 kthColumn[i] = previousDkMatrix[i][colIdx];
@@ -318,8 +333,11 @@ void parallelFloydWarshall(
 
             for (int i = 0, otherProcessId = rowId * sqrtP; i < sqrtP; ++i, ++otherProcessId)
             {
-                std::cout << "Process #" << taskId << " sending column to process " << otherProcessId << "\n";
-                if (otherProcessId != taskId) MPI_Send((void*) &kthColumn[0], n, MPI_INT, otherProcessId, 0, MPI_COMM_WORLD);
+                if (otherProcessId != taskId)
+                {
+                    std::cout << "Process #" << taskId << " sending column to process " << otherProcessId << "\n";
+                    MPI_Send((void*) &kthColumn[0], n, MPI_INT, otherProcessId, 0, MPI_COMM_WORLD);
+                }
             }
         }
         else
@@ -329,11 +347,11 @@ void parallelFloydWarshall(
             // Otherwise, the current process will wait to receive the needed column from another process
             MPI_Status receiveStatus;
             MPI_Recv((void*) &kthColumn[0], n, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &receiveStatus);
+
+            std::cout << "Process #" << taskId << " received column from process #" << receiveStatus.MPI_SOURCE << "\n";
         }
 
-        std::cout << "Process #" << taskId << " waiting at barrier!\n";
         MPI_Barrier(MPI_COMM_WORLD); // Wait for all processes to reach this point
-
 
         // At this point, every processor has all the necessary information for computing its D^k submatrix
 
@@ -341,15 +359,17 @@ void parallelFloydWarshall(
         {
             for (int j = 0; j < n; ++j)
             {
-                int dIToK = kthColumn[i];
-                int dKToJ = kthRow[j];
+                int dIToK = kthRow[j];
+                int dKToJ = kthColumn[i];
                 graph[i][j] = std::min( previousDkMatrix[i][j], dIToK + dKToJ );
             }
         }
         previousDkMatrix = graph;
+
+        MPI_Barrier(MPI_COMM_WORLD); // Wait for all processes to reach this point
     }
 
-    // printVectorContentsWithAssertions( graph, answer, taskId, upperLeftCoordinates.first, upperLeftCoordinates.second );
-    if (taskId == MASTER) printVectorContents(graph, taskId);
+    printVectorContentsWithAssertions( graph, answer, taskId, upperLeftCoordinates.first, upperLeftCoordinates.second );
+    // if (taskId == MASTER) printVectorContents(graph, taskId);
 }
 

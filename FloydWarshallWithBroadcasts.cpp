@@ -5,6 +5,7 @@
 #include <cassert>
 #include <algorithm>
 #include <map>
+#include <chrono>
 
 #include <mpi.h>
 
@@ -171,6 +172,10 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    std::chrono::milliseconds startTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+        );
+
     int sqrtP = (int) sqrt(numTasks);
     int subMatrixSize = theGraph.size() / sqrtP;
 
@@ -240,7 +245,23 @@ int main(int argc, char* argv[])
     std::pair<int, int> bottomRighCoordinates(graphEndingRowIndex, graphEndingColumnIndex);
     parallelFloydWarshall(subMatrix, taskId, upperLeftCoordinates, bottomRighCoordinates, startingRowId, startingColumnId, sqrtP);
 
+    std::chrono::milliseconds endTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+        );
+
+    long long endTimeCount = endTime.count();
+    long long startTimeCount = startTime.count();
+    long long maxTime, minTime;
+
+    MPI_Reduce(&endTimeCount, &maxTime, 1, MPI_LONG_LONG, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&startTimeCount, &minTime, 1, MPI_LONG_LONG, MPI_MIN, 0, MPI_COMM_WORLD);
+
     MPI_Finalize();
+
+    if (taskId == MASTER)
+    {
+        std::cout << "Total computation time is: " << maxTime - minTime << " milliseconds" << std::endl;
+    }
 
     return 0;
 }

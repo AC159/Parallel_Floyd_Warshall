@@ -15,7 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Comp428_Floyd_Warshall.cpp">
+    <ClCompile Include="FloydWarshallWithBroadcasts.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FloydWarshallPipelining.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

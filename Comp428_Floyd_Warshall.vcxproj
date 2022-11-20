@@ -131,7 +131,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Comp428_Floyd_Warshall.cpp" />
+    <ClCompile Include="FloydWarshallWithBroadcasts.cpp" />
+    <ClCompile Include="FloydWarshallPipelining.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

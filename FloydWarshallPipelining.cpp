@@ -272,8 +272,6 @@ void parallelFloydWarshall(
 
     for (int k = 0; k < theGraph.size(); ++k)
     {
-        if (taskId == MASTER) std::cout << "Iteration #" << k << std::endl;
-
         // k is the current vertex for which we are trying to find the shortest path to all other vertices
 
         // During the Kth iteration of the algorithm, each of the sqrt(p) processes containing part of the kth row 
@@ -303,13 +301,11 @@ void parallelFloydWarshall(
 
             if ( previousProcessor >= rankOfFirstProcessorInCol )
             {
-                std::cout << "Process #" << taskId << " sending row to process " << previousProcessor << "\n";
                 MPI_Send((void*)&kthRow[0], n, MPI_INT, previousProcessor, rowTag, MPI_COMM_WORLD);
             }
             
             if (nextProcessor <= rankOfLastProcessorInCol)
             {
-                std::cout << "Process #" << taskId << " sending row to process " << nextProcessor << "\n";
                 MPI_Send((void*)&kthRow[0], n, MPI_INT, nextProcessor, rowTag, MPI_COMM_WORLD);
             }
         }
@@ -318,8 +314,6 @@ void parallelFloydWarshall(
             // Otherwise, the current process will wait to receive the needed row from another process
             MPI_Status receiveStatus;
             MPI_Recv((void*)&kthRow[0], n, MPI_INT, MPI_ANY_SOURCE, rowTag, MPI_COMM_WORLD, &receiveStatus);
-
-            std::cout << "Process #" << taskId << " received row from process #" << receiveStatus.MPI_SOURCE << "\n";
 
             // Once the current process receives the row, it needs to forward it to the next processor in the column opposite from where the message came from
             int previousProcessorRank = taskId - sqrtP;
@@ -373,8 +367,6 @@ void parallelFloydWarshall(
             MPI_Status receiveStatus;
             MPI_Recv((void*)&kthColumn[0], n, MPI_INT, MPI_ANY_SOURCE, colTag, MPI_COMM_WORLD, &receiveStatus);
 
-            std::cout << "Process #" << taskId << " received column from process #" << receiveStatus.MPI_SOURCE << "\n";
-
             // The current process needs to forward the received column in the direction oposite to where it came from
             int previousProcessorRank = taskId - 1;
             int nextProcessorRank = taskId + 1;
@@ -406,6 +398,62 @@ void parallelFloydWarshall(
         previousDkMatrix = graph;
     }
 
-    printVectorContentsWithAssertions(graph, answer, taskId, upperLeftCoordinates.first, upperLeftCoordinates.second);
+    // printVectorContentsWithAssertions(graph, answer, taskId, upperLeftCoordinates.first, upperLeftCoordinates.second);
+
+    // All processors will send their 2-d matrix to the master process
+    if (taskId == MASTER)
+    {
+        int numTasks;
+        MPI_Comm_size(MPI_COMM_WORLD, &numTasks);
+
+        std::map<int, std::vector<std::vector<int>>> result;
+
+        result[0] = graph; // put the submatrix of the master process
+
+        // Gather the submatrices of all other processes
+        for (int i = 0; i < n * (numTasks - 1); ++i)
+        {
+            MPI_Status status;
+            std::vector<int> buffer(n);
+
+            MPI_Recv((void*)&buffer[0], n, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+
+            result[status.MPI_SOURCE].push_back(buffer);
+        }
+
+        // At this point we have all the submatrices. We just need to reorder them into one big matrix
+        std::vector<std::vector<int>> finalMatrix(theGraph.size(), std::vector<int>(theGraph.size()));
+
+        for (int processorRank = 0; processorRank < numTasks; ++processorRank)
+        {
+            // Fill the submatrix for the current processor
+            int startingRowId = processorRank / sqrtP;
+            int startingColumnId = processorRank % sqrtP;
+
+            int graphStartingRowIndex = startingRowId * (theGraph.size() / sqrtP);
+            int graphStartingColumnIndex = startingColumnId * (theGraph.size() / sqrtP);
+
+            int tempColumnPosition = graphStartingColumnIndex;
+
+            for (int m = 0; m < n; ++m)
+            {
+                for (int l = 0; l < n; ++l)
+                {
+                    finalMatrix[graphStartingRowIndex][tempColumnPosition++] = result[processorRank][m][l];
+                }
+                tempColumnPosition = graphStartingColumnIndex;
+                ++graphStartingRowIndex;
+            }
+        }
+
+        printVectorContentsWithAssertions(finalMatrix, answer, taskId, 0, 0);
+    }
+    else
+    {
+        for (std::vector<int> row : graph)
+        {
+            MPI_Send((void*)&row[0], row.size(), MPI_INT, MASTER, 0, MPI_COMM_WORLD);
+        }
+    }
 }
 
